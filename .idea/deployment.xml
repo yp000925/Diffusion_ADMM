@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PublishConfigData" serverName="zhangyp@147.8.183.83:21000 (2)" remoteFilesAllowedToDisappearOnAutoupload="false" autoUploadExternalChanges="true">
+    <serverData>
+      <paths name="zhangyp@147.8.183.83:21000 (2)">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/home/zhangyp/project/Diffusion_ADMM" local="$PROJECT_DIR$" />
+          </mappings>
+        </serverdata>
+      </paths>
+    </serverData>
+  </component>
+</project>
