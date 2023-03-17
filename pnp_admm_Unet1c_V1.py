@@ -19,12 +19,18 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 from torch.nn.functional import mse_loss
+from utils.layer import psnr_metric, l2_loss, norm_tensor
+import time
 
+model_name = "Unet1c_V1/"
+timestr = time.strftime("%Y-%m-%d-%H_%M_%S/",time.localtime())
 out_dir = 'output/'
 if not os.path.exists(out_dir):
     os.mkdir(out_dir)
-writer = SummaryWriter(out_dir + '/runs/')
-
+out_dir = out_dir+model_name
+if not os.path.exists(out_dir):
+    os.mkdir(out_dir)
+writer = SummaryWriter(out_dir + timestr)
 
 class pnp_ADMM_DH():
     def __init__(self, wavelength, nx, ny, deltax, deltay, distance, denoiser, n_c=1, device=None, visual_check=False):
@@ -43,6 +49,7 @@ class pnp_ADMM_DH():
         self.rho = 1
         self.gamma = 1
         self.error = 0
+        self.mu = 1
 
     def rho_update(self):
         self.rho = self.gamma * self.rho
@@ -60,20 +67,26 @@ class pnp_ADMM_DH():
         :return: update for o
         '''
         o_tilde = v - u
+        # o_tilde  = norm_tensor(o_tilde)
 
         # numerator
         temp = torch.multiply(torch.fft.fft2(y), self.AT)
         n = temp + rho * torch.fft.fft2(o_tilde)
 
         # denominator
-        AT_square = torch.abs(self.AT) ** 2
-        ones_array = torch.ones_like(AT_square)
+        ATA = torch.multiply(self.AT,self.A)
+        ones_array = torch.ones_like(ATA)
         # |A|^2 OTF的intensity/magnitude 为 unit 1
-        d = ones_array * rho + torch.ones_like(AT_square)
+        d = ones_array * rho + ATA
         # d = ones_array * rho + AT_square
+        small_value = 1e-8
+        small_value =  torch.full(d.size(),small_value)
+        small_value = small_value.to(torch.complex64).to(self.device)
+        d = torch.where(d == 0, small_value, d)
         d = d.to(torch.complex64)
         o_next = torch.fft.ifft2(n / d).abs()
-        o_next = (o_next-torch.min(o_next))/(torch.max(o_next)-torch.min(o_next))
+        # o_next = torch.fft.ifft2(n / d).abs()
+        # o_next = norm_tensor(o_next)
         return o_next, mse_loss(o_old, o_next)
 
     def denoise_step(self, o, u, denoiser, v_old):
@@ -88,10 +101,11 @@ class pnp_ADMM_DH():
         # normalize to [0,1]
         v_min = torch.min(v_tilde)
         v_max = torch.max(v_tilde)
-        v_tilde = (v_tilde - v_min) / (v_max - v_min)
+        v_tilde = norm_tensor(v_tilde)
         # change channel to 3
         v_next = denoiser(v_tilde.unsqueeze(0).unsqueeze(0)).to(torch.float32).to(self.device)
         v_next = v_next[0,0,:,:]
+        v_next = v_min + (v_max-v_min)*norm_tensor(v_next)
         # v_tilde = gray_to_rgb(v_tilde).to(self.device)
         # v_next = denoiser(v_tilde.unsqueeze(0)).to('cpu').squeeze(0)
         # # change back to 1
@@ -108,16 +122,18 @@ class pnp_ADMM_DH():
         self.gamma = opts['gamma']
         self.tol = opts['tol']
         self.eta = opts['eta']
+        self.mu = opts['mu'] # the step size for updating the multiplier
         mtr_old = np.inf  # set a sufficient large value
 
         """Initialization using Weiner Deconvolution method"""
         o = torch.fft.ifft2(torch.multiply(torch.fft.fft2(y), self.AT)).abs().to(self.device)
         o_min = torch.min(o)
         o_max = torch.max(o)
-        o = (o - o_min) / (o_max - o_min)
-        v = o.clone().to(self.device)
+        o = norm_tensor(o)
+        v = torch.zeros_like(y).to(self.device)
         u = torch.zeros_like(y).to(self.device)
-
+        v, e2 = self.denoise_step(o, u, self.denoiser, v)
+        u += self.mu*(o - v)
 
         """Start ADMM-PnP"""
         pbar = tqdm(range(maxitr))
@@ -142,24 +158,24 @@ class pnp_ADMM_DH():
         if self.visual_check:
             fig,ax = plt.subplots(1,3)
         for i in pbar:
-            if self.visual_check:
+            if self.visual_check and i%self.visual_check == 0:
                 file_name = out_dir + ('v_{:d}.png').format(i)
                 # plt.imsave(file_name, v.cpu().numpy(), cmap='gray')
                 ax[0].imshow(v.cpu().numpy(),cmap = 'gray')
-                ax[0].set_title(('v_{:d} update').format(i))
+                ax[0].set_title(('v_{:d} update \n PSNR{:.2f}').format(i,psnr(v.cpu(), gt.cpu()).numpy()))
                 file_name = out_dir + ('u_{:d}.png').format(i)
                 # plt.imsave(file_name, u.cpu().numpy(), cmap='gray')
                 ax[1].imshow(u.cpu().numpy(),cmap = 'gray')
-                ax[1].set_title(('u_{:d} update').format(i))
+                ax[1].set_title(('u_{:d} update \n PSNR{:.2f}').format(i,psnr(u.cpu(), gt.cpu()).numpy()))
                 file_name = out_dir + ('o_{:d}.png').format(i)
                 # plt.imsave(file_name, o.cpu().numpy(), cmap='gray')
                 ax[2].imshow(o.cpu().numpy(),cmap = 'gray')
-                ax[2].set_title(('o_{:d} update').format(i))
+                ax[2].set_title(('o_{:d} update \n PSNR{:.2f}').format(i,psnr(o.cpu(), gt.cpu()).numpy()))
                 fig.show()
             o, e1 = self.inverse_step(v, u, y, self.rho, o)
             v, e2 = self.denoise_step(o, u, self.denoiser, v)
-            u += (o - v)
-            e3 = torch.sqrt(torch.sum(torch.square(o - v))) / u.numel()
+            u += self.mu*(o - v)
+            e3 = torch.sqrt(torch.sum(torch.square(self.mu*(o - v)))) / u.numel()
             mtr_current = e1 + e2 + e3
             if mtr_current <= self.tol:
                 print('Loop ended with matric value {:.4f}'.format(mtr_current))
@@ -173,13 +189,14 @@ class pnp_ADMM_DH():
             if verbose:
                 info = ("{}, \t {}").format(i + 1, psnr(v, gt))
                 pbar.set_description(info)
-                writer.add_scalar('o_update', e1,i)
-                writer.add_scalar('v_update', e2,i)
-                writer.add_scalar('u_update', e3,i)
-                writer.add_scalar('delta',mtr_current,i)
-                writer.add_scalar('rho', self.rho,i)
-                writer.add_scalar('gamma', self.gamma,i)
-                writer.add_scalar('eta', self.eta,i)
+                writer.add_scalar('update/o_update', e1,i)
+                writer.add_scalar('update/v_update', e2,i)
+                writer.add_scalar('update/u_update', e3,i)
+                writer.add_scalar('update/delta',mtr_current,i)
+                writer.add_scalar('params/rho', self.rho,i)
+                writer.add_scalar('params/gamma', self.gamma,i)
+                writer.add_scalar('params/eta', self.eta,i)
+                writer.add_scalar('params/mu', self.mu,i)
                 writer.add_scalar('PSNR',psnr(v, gt),i)
 
         return v,o,u
