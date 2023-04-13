@@ -34,8 +34,8 @@ model = Unet(3, 3, chans=64).to(device)
 model.load_state_dict(torch.load('denoiser.pth', map_location=device))
 print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
 
-# img = Image.open('test_image.png').resize([512,512]).convert('L')
-img = Image.open('USAF1951.jpg').resize([512,512]).convert('L')
+img = Image.open('test_image.png').resize([512,512]).convert('L')
+# img = Image.open('USAF1951.jpg').resize([512,512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity/torch.max(gt_intensity)
 
