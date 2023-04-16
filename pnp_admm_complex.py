@@ -53,25 +53,31 @@ class pnp_ADMM_DH_C():
         self.gamma = 1
         self.error = 0
 
-    def inverse_step(self,v, I, rho):
-        # numerator
+    def inverse_step(self, v, u, y, rho):
+        '''
+        inverse step (proximal operator for imaging forward model) for o-update
+            o^{k+1} = argmin ||Ao-y||^2+(rho/2)||o-o_tilde||^2
+        :param v:
+        :param u:
+        :param y: observation
+        :param rho:
+        :param A: forward operation matrix
+        :return: update for o
+        '''
+        o_tilde = v - u
 
+        # numerator
+        temp = torch.multiply(torch.fft.fft2(y), self.AT)
+        n = temp + rho * torch.fft.fft2(o_tilde)
 
         # denominator
         AT_square = torch.abs(self.AT) ** 2
         ones_array = torch.ones_like(AT_square)
-        # |A|^2 OTF的intensity/magnitude 为 unit 1
-        d = ones_array * rho + torch.ones_like(AT_square)
-        # d = ones_array * rho + AT_square
+        d = ones_array * rho + AT_square
         d = d.to(torch.complex64)
+        o_next = torch.fft.ifft2(n / d)
+        return o_next.abs()
 
 
-
-class InverseLayer(nn.Module):
-    def __init__(self, A, AT, rho):
-        super(InverseLayer,self).__init__()
-        self.A =  A
-        self.AT = AT
-        self.rho = rho
 
 
