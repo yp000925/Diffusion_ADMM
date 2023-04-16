@@ -1,5 +1,5 @@
 """
-    Plug and Play ISTA for Compressive Holography
+    Plug and Play ADMM with complex channel for Compressive Holography
 
 """
 import logging
@@ -7,6 +7,7 @@ import os
 import numpy as np
 from PIL import Image
 import torch
+import torch.nn as nn
 import cv2
 import glob
 import scipy.io as sio
@@ -34,7 +35,7 @@ writer = SummaryWriter(out_dir + '/runs/')
 
 
 
-class pnp_ISTA_DH():
+class pnp_ADMM_DH_C():
     def __init__(self, wavelength, nx, ny, deltax, deltay, distance, model, n_c=1, device=None, visual_check=False):
         self.A = generate_otf_torch(wavelength, nx, ny, deltax, deltay, distance)
         self.AT = generate_otf_torch(wavelength, nx, ny, deltax, deltay, -distance)
@@ -54,7 +55,7 @@ class pnp_ISTA_DH():
 
     def inverse_step(self,v, I, rho):
         # numerator
-        
+
 
         # denominator
         AT_square = torch.abs(self.AT) ** 2
@@ -63,3 +64,14 @@ class pnp_ISTA_DH():
         d = ones_array * rho + torch.ones_like(AT_square)
         # d = ones_array * rho + AT_square
         d = d.to(torch.complex64)
+
+
+
+class InverseLayer(nn.Module):
+    def __init__(self, A, AT, rho):
+        super(InverseLayer,self).__init__()
+        self.A =  A
+        self.AT = AT
+        self.rho = rho
+
+
