@@ -3,7 +3,7 @@ use test image -> ImageNet data
 '''
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 from pnp_admm_Unet import pnp_ADMM_DH
 from utils import *
 import PIL.Image as Image
@@ -36,8 +36,8 @@ model.load_state_dict(loader['model_state_dict'])
 print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
 
 """ Load the GT intensity map and get the diffraction pattern"""
-# img = Image.open('test_image.png').resize([512, 512]).convert('L')
-img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
+img = Image.open('test_image.png').resize([512, 512]).convert('L')
+# img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity / torch.max(gt_intensity)
@@ -67,7 +67,7 @@ rec = norm_tensor(rec)
 solver = pnp_ADMM_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=False)
 A = solver.A
 AT = solver.AT
-opts = dict(rho=torch.tensor([1e-4]), maxitr=500, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
+opts = dict(rho=torch.tensor([0.05]), maxitr=500, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
             tol=0.0000001, gamma=1, psnr_tol=0, patient=10)
 
 # ---- reconstruction using ADMMPnP-----

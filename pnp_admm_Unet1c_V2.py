@@ -109,16 +109,12 @@ class pnp_ADMM_DH():
         v_next = denoiser(v_tilde.unsqueeze(0).unsqueeze(0)).to(torch.float32).to(self.device)
         v_next = v_next[0,0,:,:]
         # v_next = v_min + (v_max-v_min)*norm_tensor(v_next)
-        # v_tilde = gray_to_rgb(v_tilde).to(self.device)
-        # v_next = denoiser(v_tilde.unsqueeze(0)).to('cpu').squeeze(0)
-        # # change back to 1
-        # v_next = rgb_to_gray(v_next).to(self.device)
+
         return v_next, mse_loss(v_old, v_next)
 
     def pnp_Admm_DH(self, y, opts):
         maxitr = opts['maxitr']
         verbose = opts['verbose']
-        # rho = opts['rho'].to(self.device)
         gt = opts['gt'].to(self.device)
         y = y.to(self.device)
         self.rho = opts['rho'].to(self.device)
@@ -133,6 +129,7 @@ class pnp_ADMM_DH():
         o_min = torch.min(o)
         o_max = torch.max(o)
         o = norm_tensor(o)
+        init = o.cpu()
         v = torch.zeros_like(y).to(self.device)
         u = torch.zeros_like(y).to(self.device)
         v, e2 = self.denoise_step(o, u, self.denoiser, v)
@@ -158,22 +155,19 @@ class pnp_ADMM_DH():
             logger.addHandler(sh)
             logger.info('\n Training========================================')
             logger.info(('\n' + '%10s' * 3) % ('Iteration  ', 'o_PSNR','v_PSNR'))
-        if self.visual_check:
-            fig,ax = plt.subplots(1,3)
         for i in pbar:
-            if self.visual_check and i%self.visual_check == 0:
-                file_name = out_dir + ('v_{:d}.png').format(i)
-                # plt.imsave(file_name, v.cpu().numpy(), cmap='gray')
-                ax[0].imshow(v.cpu().numpy(),cmap = 'gray')
-                ax[0].set_title(('v_{:d} update \n PSNR{:.2f}').format(i,psnr(v.cpu(), gt.cpu()).numpy()))
-                file_name = out_dir + ('u_{:d}.png').format(i)
-                # plt.imsave(file_name, u.cpu().numpy(), cmap='gray')
-                ax[1].imshow(u.cpu().numpy(),cmap = 'gray')
-                ax[1].set_title(('u_{:d} update \n PSNR{:.2f}').format(i,psnr(u.cpu(), gt.cpu()).numpy()))
-                file_name = out_dir + ('o_{:d}.png').format(i)
-                # plt.imsave(file_name, o.cpu().numpy(), cmap='gray')
-                ax[2].imshow(o.cpu().numpy(),cmap = 'gray')
-                ax[2].set_title(('o_{:d} update \n PSNR{:.2f}').format(i,psnr(o.cpu(), gt.cpu()).numpy()))
+            if self.visual_check and i % self.visual_check == 0:
+                fig, ax = plt.subplots(2, 3)
+                ax[0,0].imshow(y.cpu().numpy(), cmap='gray')
+                ax[0,1].imshow(gt.cpu().numpy(), cmap='gray')
+                ax[0,2].imshow(init.numpy(), cmap='gray')
+                ax[0,2].set_title(('BP \n PSNR{:.2f}').format(psnr(init, gt.cpu()).numpy()))
+                ax[1,0].imshow(v.cpu().numpy(), cmap='gray')
+                ax[1,0].set_title(('v_{} \n PSNR{:.2f}').format(i,psnr(v.cpu(), gt.cpu()).numpy()))
+                ax[1,1].imshow(o.cpu().numpy(), cmap='gray')
+                ax[1,1].set_title(('o_{} \n PSNR{:.2f}').format(i,psnr(o.cpu(), gt.cpu()).numpy()))
+                ax[1,2].imshow(u.cpu().numpy(), cmap='gray')
+                ax[1,2].set_title('u_{}'.format(i))
                 fig.show()
             o, e1 = self.inverse_step(v, u, y, self.rho, o)
             v, e2 = self.denoise_step(o, u, self.denoiser, v)

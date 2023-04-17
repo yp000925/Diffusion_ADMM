@@ -4,7 +4,7 @@ use test image -> ImageNet data
 import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-from pnp_admm_Unet1c_V2 import pnp_ADMM_DH
+from pnp_admm_complex import pnp_ADMM_DH_C
 from utils import *
 import PIL.Image as Image
 import torch
@@ -36,9 +36,9 @@ model.load_state_dict(loader['model_state_dict'])
 print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
 
 """ Load the GT intensity map and get the diffraction pattern"""
-img = Image.open('test_image.png').resize([512, 512]).convert('L')
+# img = Image.open('test_image.png').resize([512, 512]).convert('L')
 # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
-# img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
+img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity / torch.max(gt_intensity)
 
@@ -53,8 +53,8 @@ ny = 512
 A = generate_otf_torch(w, nx, ny, deltax, deltay, distance)
 holo = ifft2(torch.multiply(A, fft2(gt_intensity)))  # 此处应该是gt_intensity才对
 holo = torch.abs(holo)
-# holo = norm_tensor(holo)
-holo = holo / torch.max(holo)
+holo = norm_tensor(holo)
+# holo = holo / torch.max(holo)
 # Image.fromarray(holo.numpy()*255).show(title='hologram(diffraction pattern)')
 AT = generate_otf_torch(w, nx, ny, deltax, deltay, -distance)
 rec = ifft2(torch.multiply(AT, fft2(holo)))
@@ -64,26 +64,34 @@ rec = norm_tensor(rec)
 # Image.fromarray(rec.numpy()*255).show(title='BP')
 
 # ---- set solver -----
-solver = pnp_ADMM_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=10)
+solver = pnp_ADMM_DH_C(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=100)
 A = solver.A
 AT = solver.AT
-opts = dict(rho=torch.tensor([0.05]), maxitr=100, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
-            tol=0.0000001, gamma=1, psnr_tol=0, patient=100, mu=0.01)
+opts = dict(rho=torch.tensor([1e-2]), maxitr=1000, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
+            tol=0.0000001, gamma=1, psnr_tol=0, patient=100)
 
 # ---- reconstruction using ADMMPnP-----
 with torch.no_grad():
-    out = solver.pnp_Admm_DH(holo, opts)
-    fig, ax = plt.subplots(2, 3)
+    out = solver.pnp_ADMM_complex(holo, opts)
+    fig, ax = plt.subplots(3, 3)
     ax[0,0].imshow(holo.cpu().numpy(), cmap='gray')
     ax[0,1].imshow(gt_intensity.cpu().numpy(), cmap='gray')
     ax[0,2].imshow(rec.cpu().numpy(), cmap='gray')
     ax[0,2].set_title(('BP \n PSNR{:.2f}').format(psnr(rec.cpu(), gt_intensity.cpu()).numpy()))
-    ax[1,0].imshow(out[0].cpu().numpy(), cmap='gray')
-    ax[1,0].set_title(('v_out \n PSNR{:.2f}').format(psnr(out[0].cpu(), gt_intensity.cpu()).numpy()))
-    ax[1,1].imshow(out[1].cpu().numpy(), cmap='gray')
-    ax[1,1].set_title(('o_out \n PSNR{:.2f}').format(psnr(out[1].cpu(), gt_intensity.cpu()).numpy()))
-    ax[1,2].imshow(out[2].cpu().numpy(), cmap='gray')
+    ax[1,0].imshow(out[0].real.cpu().numpy(), cmap='gray')
+    ax[1,0].set_title(('v_out \n PSNR{:.2f}').format(psnr(out[0].cpu().real, gt_intensity.cpu()).numpy()))
+    ax[1,1].imshow(out[1].real.cpu().numpy(), cmap='gray')
+    ax[1,1].set_title(('o_out \n PSNR{:.2f}').format(psnr(out[1].cpu().real, gt_intensity.cpu()).numpy()))
+    ax[1,2].imshow(out[2].cpu().real.numpy(), cmap='gray')
     ax[1,2].set_title('u_out')
+
+
+    ax[2, 0].imshow(out[0].imag.cpu().numpy(), cmap='gray')
+    ax[2, 0].set_title('v_imag')
+    ax[2, 1].imshow(out[1].imag.cpu().numpy(), cmap='gray')
+    ax[2, 1].set_title('o_imag')
+    ax[2, 2].imshow(out[2].imag.cpu().numpy(), cmap='gray')
+    ax[2, 2].set_title('u_imag')
     fig.show()
 
 # ---- find best rho-----
