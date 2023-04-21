@@ -36,8 +36,8 @@ model.load_state_dict(loader['model_state_dict'])
 print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
 
 """ Load the GT intensity map and get the diffraction pattern"""
-img = Image.open('test_image.png').resize([512, 512]).convert('L')
-# img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
+# img = Image.open('test_image.png').resize([512, 512]).convert('L')
+img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity / torch.max(gt_intensity)
