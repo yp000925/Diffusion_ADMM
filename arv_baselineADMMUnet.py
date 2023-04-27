@@ -3,7 +3,7 @@ use test image -> ImageNet data
 '''
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from pnp_admm_Unet1c_V2 import pnp_ADMM_DH
 from utils import *
 import PIL.Image as Image

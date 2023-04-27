@@ -143,7 +143,7 @@ def norm_tensor(x):
 
 def psnr(x,im_orig):
     x = norm_tensor(x)
-    im_orig = norm_tensor(im_orig)
+    # im_orig = norm_tensor(im_orig)
     mse = torch.mean(torch.square(im_orig - x))
     psnr = torch.tensor(10.0)* torch.log10(1/ mse)
     return psnr
