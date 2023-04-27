@@ -81,7 +81,8 @@ def make_path(path):
     if not os.path.isdir(path):
         os.mkdir(path)
 
-
+def tensor2fig(tensor):
+    return tensor[0,0,:,:].cpu().detach().numpy()
 def save_fig_(save_path, result_data, args):
 
     holo, fake_holo, real_amplitude, fake_amplitude, real_phase, fake_phase, real_distance, fake_distance = result_data
@@ -185,6 +186,12 @@ def rgb_to_gray(arr_in):
     img = Image.fromarray((img_arr*255).astype(np.uint8)).convert('L') # Image.fromarray 三通道的时候必须为unit8 类型
     arr_out=torchvision.transforms.ToTensor()(img)
     return arr_out
+
+def autopad(k, p=None):  # kernel, padding
+    # Pad to 'same'
+    if p is None:
+        p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
+    return p
 
 
 if __name__=="__main__":
