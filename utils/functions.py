@@ -196,6 +196,13 @@ def autopad(k, p=None):  # kernel, padding
 def forward_propagation(x, A):
     out = torch.fft.ifft2(torch.multiply(torch.fft.fft2(x), A))
     return out
+
+
+def prepross_bg(img,bg):
+    temp = img/bg
+    out = (temp-np.min(temp))/(1-np.min(temp))
+    return out
+
 if __name__=="__main__":
     arr = torch.rand([1,5,5])
     arr_exp = gray_to_rgb(arr)
