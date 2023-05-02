@@ -1,29 +1,26 @@
 '''
-Method for automatically back-propagation method in intensity object
+use test image -> ImageNet data
 '''
-
-import logging
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-import numpy as np
-from PIL import Image
-import torch
-from utils.functions import psnr, generate_otf_torch, rgb_to_gray, gray_to_rgb
-from tqdm import tqdm
-import matplotlib.pyplot as plt
-from torch.utils.tensorboard import SummaryWriter
-from torch.nn.functional import mse_loss
-from utils.layer import psnr_metric, l2_loss, norm_tensor
-from utils.functions import tensor2fig
-import time
-from torch.fft import fft2, ifft2, fftshift, ifftshift
-from DHNet import DHNet, initialization, forward_propagation
 from torch.optim import Adam
-from tqdm import tqdm
-from argparse import ArgumentParser
-from torch.utils.tensorboard import SummaryWriter
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+from pnp_admm_Unet1c_V2 import pnp_ADMM_DH
+from utils import *
+import PIL.Image as Image
+import torch
+import torch.nn.functional as F
+from models.Unet import Unet
+import numpy as np
+from utils.functions import generate_otf_torch, psnr,norm_tensor,tensor2fig,forward_propagation
+from torch.fft import fft2, ifft2, fftshift, ifftshift
+import time
+import matplotlib.pyplot as plt
 import torch.optim as optim
+from tqdm import tqdm
+import logging
 from torch.nn import MSELoss
+from torch.utils.tensorboard import SummaryWriter
+
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -45,7 +42,7 @@ writer = SummaryWriter(out_dir + timestr)
 img = Image.open('sample.bmp').convert('L')
 # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
-holo = torch.from_numpy(np.array(img)).to(device)
+holo = torch.from_numpy(np.array(img))
 holo = holo / torch.max(holo)
 
 # ---- define propagation kernel -----
@@ -57,51 +54,65 @@ nx = 1000
 ny = 1000
 # ---- forward and backward propagation -----
 A = generate_otf_torch(w, nx, ny, deltax, deltay, distance)
-
 AT = generate_otf_torch(w, nx, ny, deltax, deltay, -distance)
-# rec = ifft2(torch.multiply(AT, fft2(holo)))
-# rec = torch.angle(rec)
-# rec = norm_tensor(rec)
-# rec = rec / torch.max(rec)*2-1
+
 rec = ifft2(torch.multiply(AT, fft2(holo)))
 rec_amp = torch.abs(rec)
 rec_amp = norm_tensor(rec_amp)
 rec_amp = rec_amp / torch.max(rec_amp)
-
 rec_phase = torch.angle(rec)
 rec_phase = norm_tensor(rec_phase)
+plt.imsave(out_dir + timestr +'bp_phase.png',rec_phase)
+plt.imsave(out_dir + timestr +'bp_amp.png',rec_amp)
+
 
 fig, ax = plt.subplots(1, 3)
-ax[0].imshow(holo, cmap='gray')
+ax[0].imshow(holo.cpu(), cmap='gray')
 ax[1].imshow(rec_amp, cmap='gray')
 ax[1].set_title(('BP amplitude'))
 ax[2].imshow(rec_phase, cmap='gray')
 ax[2].set_title(('BP phase'))
 fig.show()
+
+
 # ---- Define the network -----
-maxitr =5000
-visual_check = 500
+maxitr =10000
+visual_check = 1000
 verbose = True
 
 pbar = tqdm(range(maxitr + 1))
 holo = holo.unsqueeze(0).unsqueeze(0)
+holo = holo.to(device)
+A = A.to(device)
+AT = AT.to(device)
 # initialize o
 
 # o = torch.fft.ifft2(torch.multiply(torch.fft.fft2(holo), AT)).to(device)
 # o_phase = torch.angle(o)
 # o_amp = torch.abs(o)
-o_phase = torch.nn.Parameter(-1+2*torch.rand(holo.shape,dtype=holo.dtype, requires_grad=True)).to(device)
-o_amp = torch.nn.Parameter(torch.rand(holo.shape,dtype=holo.dtype, requires_grad=True)).to(device)
+# o_phase.requires_grad = True
+# o_amp.requires_grad = True
+# #
+# init = torch.nn.Parameter(torch.rand([1,1,nx,ny],dtype=holo.dtype)).to(device)
+# o = torch.fft.ifft2(torch.multiply(torch.fft.fft2(init), AT)).to(device)
+# o_phase = torch.angle(o)
+# o_amp = torch.abs(o)
+# o_phase.requires_grad = True
+# o_amp.requires_grad = True
+# o_phase = torch.nn.Parameter(-1+2*torch.rand(holo.shape,dtype=holo.dtype, requires_grad=True))
+# o_amp = torch.nn.Parameter(torch.rand(holo.shape,dtype=holo.dtype, requires_grad=True))
 
+o_phase = torch.rand(holo.shape,dtype=holo.dtype).to(device)
+
+o_amp =torch.rand(holo.shape,dtype=holo.dtype).to(device)
 o_phase.requires_grad = True
 o_amp.requires_grad = True
-
-
+# print(o_phase.is_leaf)
+# print(o_amp.is_leaf)
 # ---- Setting the training params -----
 optimizer = Adam([o_phase, o_amp], lr=0.001)
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=5, factor=0.5, threshold=0.001,
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=1000, factor=0.5, threshold=0.001,
                                                  verbose=True)
-
 if verbose:
     logger = logging.getLogger(__name__)
     logging.basicConfig(format="%(message)s", level=logging.INFO)
@@ -113,11 +124,12 @@ for i in pbar:
     optimizer.zero_grad()
     o = torch.exp(1j * o_phase) * o_amp
     pred = forward_propagation(o, A).abs()
-
-    mse_loss = MSELoss()(pred, holo)
+    # pred =torch.fft.ifft2(torch.multiply(torch.fft.fft2( torch.exp(1j * o_phase) * o_amp), A))
+    # mse_loss = MSELoss()(pred, holo)
+    mse_loss =  torch.mean((pred - holo)**2)
     mse_loss.backward(retain_graph=True)
     optimizer.step()
-    # scheduler.step(mse_loss)
+    scheduler.step(mse_loss)
 
     # # calculate metric
     # o_psnr_phase = psnr(o_phase, gt_phase.to(o.device)).cpu()
@@ -130,12 +142,17 @@ for i in pbar:
         writer.add_scalar('metric/loss', mse_loss, i)
 
     if visual_check and i % visual_check == 0:
-        fig, ax = plt.subplots(1, 3)
+        fig, ax = plt.subplots(1, 4)
         ax[0].imshow(tensor2fig(holo), cmap='gray')
         ax[0].set_title('Hologram')
-        ax[1].imshow(tensor2fig(o_phase), cmap='gray')
-        ax[1].set_title(('o_p{} \n').format(i))
-        ax[2].imshow(tensor2fig(o_amp), cmap='gray')
-        ax[2].set_title(('o_a{} \n').format(i))
+        ax[2].imshow(tensor2fig(o_phase), cmap='gray')
+        ax[2].set_title(('o_p{} \n').format(i))
+        ax[1].imshow(tensor2fig(o_amp), cmap='gray')
+        ax[1].set_title(('o_a{} \n').format(i))
+        ax[3].imshow(tensor2fig(pred), cmap='gray')
+        ax[3].set_title(('holo_pred{} \n').format(i))
+
         fig.show()
 fig.savefig(out_dir + timestr +'output.jpg')
+plt.imsave(out_dir + timestr +'o_phase.png',tensor2fig(o_phase))
+plt.imsave(out_dir + timestr +'o_amp.png',tensor2fig(o_amp))

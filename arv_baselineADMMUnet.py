@@ -50,7 +50,7 @@ distance = 0.02
 nx = 512
 ny = 512
 # ---- forward and backward propagation -----
-A = generate_otf_torch(w, nx, ny, deltax, deltay, distance)
+A = generate_otf_torch(w, nx, ny, deltax, deltay, distance).to(device)
 holo = ifft2(torch.multiply(A, fft2(gt_intensity)))  # 此处应该是gt_intensity才对
 holo = torch.abs(holo)
 # holo = norm_tensor(holo)

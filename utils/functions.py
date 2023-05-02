@@ -193,7 +193,9 @@ def autopad(k, p=None):  # kernel, padding
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
 
-
+def forward_propagation(x, A):
+    out = torch.fft.ifft2(torch.multiply(torch.fft.fft2(x), A))
+    return out
 if __name__=="__main__":
     arr = torch.rand([1,5,5])
     arr_exp = gray_to_rgb(arr)
