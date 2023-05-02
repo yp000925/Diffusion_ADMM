@@ -121,7 +121,7 @@ if verbose:
     logger = logging.getLogger(__name__)
     logging.basicConfig(format="%(message)s", level=logging.INFO)
     formater = logging.Formatter("%(message)s")
-    logger.info('\n Training========================================')
+    logger.info('\n Training=========================================')
     logger.info(('\n' + '%10s' * 2) % ('Iteration  ','loss'))
 
 for i in pbar:
