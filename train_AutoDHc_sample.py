@@ -64,7 +64,8 @@ rec_phase = torch.angle(rec)
 rec_phase = norm_tensor(rec_phase)
 plt.imsave(out_dir + timestr +'bp_phase.png',rec_phase)
 plt.imsave(out_dir + timestr +'bp_amp.png',rec_amp)
-
+plt.imsave(out_dir + timestr +'bp_phase.png',rec_phase,cmap='gray')
+plt.imsave(out_dir + timestr +'bp_amp.png',rec_amp,cmap='gray')
 
 fig, ax = plt.subplots(1, 3)
 ax[0].imshow(holo.cpu(), cmap='gray')
@@ -156,3 +157,5 @@ for i in pbar:
 fig.savefig(out_dir + timestr +'output.jpg')
 plt.imsave(out_dir + timestr +'o_phase.png',tensor2fig(o_phase))
 plt.imsave(out_dir + timestr +'o_amp.png',tensor2fig(o_amp))
+plt.imsave(out_dir + timestr +'o_phase_g.png',tensor2fig(o_phase),cmap='gray')
+plt.imsave(out_dir + timestr +'o_amp_g.png',tensor2fig(o_amp),cmap='gray')
