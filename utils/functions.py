@@ -83,6 +83,9 @@ def make_path(path):
 
 def tensor2fig(tensor):
     return tensor[0,0,:,:].cpu().detach().numpy()
+
+
+
 def save_fig_(save_path, result_data, args):
 
     holo, fake_holo, real_amplitude, fake_amplitude, real_phase, fake_phase, real_distance, fake_distance = result_data
@@ -144,6 +147,7 @@ def norm_tensor(x):
 def psnr(x,im_orig):
     x = norm_tensor(x)
     # im_orig = norm_tensor(im_orig)
+
     mse = torch.mean(torch.square(im_orig - x))
     psnr = torch.tensor(10.0)* torch.log10(1/ mse)
     return psnr
@@ -154,6 +158,11 @@ def psnr(x,im_orig):
 #     norm2 = np.sum((np.absolute(x - im_orig)) ** 2)
 #     psnr = 10 * np.log10( norm1 / norm2 )
 #     return psnr
+def resize_and_process(img_np,nx=256,ny=256):
+    img_np = img_np/img_np.max()*255
+    img = Image.fromarray(img_np).resize([nx,ny])
+    img_np = np.array(img)
+    return img_np/img_np.max()
 
 def gray_to_rgb(img):
     if not torch.is_tensor(img):

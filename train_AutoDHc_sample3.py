@@ -79,8 +79,8 @@ fig.show()
 
 
 # ---- Define the network -----
-maxitr =30000
-visual_check = 1000
+maxitr =10000
+visual_check = None
 verbose = True
 
 pbar = tqdm(range(maxitr + 1))
@@ -114,7 +114,7 @@ o_amp.requires_grad = True
 # print(o_phase.is_leaf)
 # print(o_amp.is_leaf)
 # ---- Setting the training params -----
-optimizer = Adam([o_phase,o_amp], lr=0.001)
+optimizer = Adam([o_phase,o_amp], lr=0.0001)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=1000, factor=0.5, threshold=0.001,
                                                  verbose=True)
 if verbose:
@@ -127,12 +127,15 @@ if verbose:
 for i in pbar:
     optimizer.zero_grad()
     o = torch.exp(1j * o_phase) * o_amp
+    # o = torch.exp(1j * o_phase)
+    # o = o_amp+1j*o_phase
     pred = forward_propagation(o, A).abs()
     pred = pred*pred
     pred = pred/torch.max(pred)
+    noise = 1/10*torch.rand(pred.shape).to(device)*0
     # pred =torch.fft.ifft2(torch.multiply(torch.fft.fft2( torch.exp(1j * o_phase) * o_amp), A))
     # mse_loss = MSELoss()(pred, holo)
-    mse_loss =  torch.mean((pred - holo)**2)
+    mse_loss =  torch.mean((pred + noise - holo)**2)
     mse_loss.backward(retain_graph=True)
     optimizer.step()
     # scheduler.step(mse_loss)
@@ -140,6 +143,7 @@ for i in pbar:
     # # calculate metric
     # o_psnr_phase = psnr(o_phase, gt_phase.to(o.device)).cpu()
     # o_psnr_amp = psnr(o_amp, gt_amp.to(o.device)).cpu()
+
 
     if verbose:
         info = ("{}, \t {}").format(i + 1, mse_loss)
@@ -149,6 +153,8 @@ for i in pbar:
 
     if visual_check and i % visual_check == 0:
         fig, ax = plt.subplots(1, 4)
+        # o_phase = o.angle()
+        # o_amp = o.abs()
         ax[0].imshow(tensor2fig(holo), cmap='gray')
         ax[0].set_title('Hologram')
         ax[2].imshow(tensor2fig(o_phase), cmap='gray')
@@ -157,10 +163,12 @@ for i in pbar:
         ax[1].set_title(('o_a{} \n').format(i))
         ax[3].imshow(tensor2fig(pred), cmap='gray')
         ax[3].set_title(('holo_pred{} \n').format(i))
-
         fig.show()
+
 fig.savefig(out_dir + timestr +'output.jpg')
 plt.imsave(out_dir + timestr +'o_phase.png',tensor2fig(o_phase))
 plt.imsave(out_dir + timestr +'o_amp.png',tensor2fig(o_amp))
 plt.imsave(out_dir + timestr +'o_phase_g.png',tensor2fig(o_phase),cmap='gray')
 plt.imsave(out_dir + timestr +'o_amp_g.png',tensor2fig(o_amp),cmap='gray')
+
+

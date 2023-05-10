@@ -4,7 +4,7 @@ use test image -> ImageNet data
 import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-from pnp_admm_Unet1c_V2 import pnp_ADMM_DH
+from pnp_admm_Unet1c_V3 import pnp_ADMM_DH
 from utils import *
 import PIL.Image as Image
 import torch
@@ -21,10 +21,6 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 np.random.seed(SEED)
 
-# out_dir = 'output/'
-#
-# if not os.path.exists(out_dir):
-#     os.mkdir(out_dir)
 """ Load pre-trained Unet pth"""
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -64,11 +60,11 @@ rec = norm_tensor(rec)
 # Image.fromarray(rec.numpy()*255).show(title='BP')
 
 # ---- set solver -----
-solver = pnp_ADMM_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=10)
+solver = pnp_ADMM_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=100)
 A = solver.A
 AT = solver.AT
-opts = dict(rho=torch.tensor([0.05]), maxitr=100, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
-            tol=0.0000001, gamma=1, psnr_tol=0, patient=100, mu=0.01)
+opts = dict(rho=torch.tensor([0.1]), maxitr=1000, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
+            tol=0.0000001, gamma=1, psnr_tol=0, patient=100)
 
 # ---- reconstruction using ADMMPnP-----
 with torch.no_grad():

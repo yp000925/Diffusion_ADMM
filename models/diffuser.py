@@ -268,7 +268,7 @@ def parse_args_and_config():
     return args, new_config
 
 class diffusion():
-    def __init__(self,model_pth, model_type='default', data_args=None, args=None, device=None):
+    def __init__(self,model_pth, model_type='default', data_args=None, args=None, device=None,silence_diffuser=False):
         self.ckpt_pth = model_pth
         if device is None:
             device = (
@@ -304,6 +304,8 @@ class diffusion():
         else:
             print("Not supporting task")
             raise(ValueError)
+
+        self.silence_diffuser=silence_diffuser
 
 
 
@@ -347,7 +349,8 @@ class diffusion():
         seq = range(0, betas.shape[0], skip)
 
         x = efficient_generalized_steps(x, seq, model, betas, H_funcs, y_0, sigma_0, \
-                                        etaB=diffusion_args.etaB, etaA=diffusion_args.eta, etaC=diffusion_args.eta, cls_fn=None, classes=None)
+                                        etaB=diffusion_args.etaB, etaA=diffusion_args.eta, etaC=diffusion_args.eta, cls_fn=None,
+                                        classes=None, silence_diffuser=self.silence_diffuser)
         if last:
             x = x[0][-1]
         return x
