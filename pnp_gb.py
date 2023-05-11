@@ -1,6 +1,5 @@
 """
-    Plug and Play ADMM for Compressive Holography
-    Adjustment with including rho in the u-update size
+    Plug and Play Gradient based method for Holography reconstruction
 
 """
 import logging
@@ -31,9 +30,8 @@ if not os.path.exists(out_dir):
     os.mkdir(out_dir)
 writer = SummaryWriter(out_dir + timestr)
 
-
-class pnp_ADMM_DH():
-    def __init__(self, wavelength, nx, ny, deltax, deltay, distance, denoiser, n_c=1, device=None, visual_check=False):
+class GB_PNP_DH():
+    def __init__(self, wavelength, nx, ny, deltax, deltay, distance, denoiser, n_c=1, device=None, visual_check=False, padding=200):
         self.A = generate_otf_torch(wavelength, nx, ny, deltax, deltay, distance)
         self.AT = generate_otf_torch(wavelength, nx, ny, deltax, deltay, -distance)
         self.denoiser = denoiser
@@ -47,93 +45,77 @@ class pnp_ADMM_DH():
         else:
             self.device = 'cpu'
         self.rho = 1
-        self.gamma = 1
+        # self.gamma = 1
         self.error = 0
+        self.padding = padding
         # self.mu = 1
 
-    def rho_update(self):
-        self.rho = self.gamma * self.rho
-        # print("rho update to {:.3f}".format(self.rho.item()))
-        return
+    def forward_prop(self,f_in):
+        fs_out = torch.multiply(torch.fft.fft2(f_in), self.A)
+        f_out = torch.fft.ifft2(fs_out)
+        return f_out
 
-    def inverse_step(self, v, u, y, rho, o_old):
+    def backward_prop(self,f_in):
+        fs_out = torch.multiply(torch.fft.fft2(f_in), self.AT)
+        f_out = torch.fft.ifft2(fs_out)
+        return f_out
+
+    def cal_gradient(self,x, y):
         '''
-        inverse step (proximal operator for imaging forward model) for o-update
-            o^{k+1} = argmin ||Ao-y||^2+(rho/2)||o-o_tilde||^2
-        :param v:
+
+        :param x: the complex-valued transmittance of the sample
+        :param y: Intensity image (absolute value)
+        :return: Wirtinger gradient
+        '''
+        temp = self.forward_prop(x)
+        temp = (torch.abs(temp)-y)*torch.exp(1j*torch.angle(temp))
+        gradient = 0.5*self.backward_prop(temp)
+        return gradient
+
+    def o_update(self,u, y, o_old):
+        '''
+        gradient projection updation
         :param u:
-        :param y: observation
-        :param rho:
-        :param A: forward operation matrix
-        :return: update for o
-        '''
-        o_tilde = v - u
-        # o_tilde  = norm_tensor(o_tilde)
-
-        # numerator
-        temp = torch.multiply(torch.fft.fft2(y), self.AT)
-        n = temp + rho * torch.fft.fft2(o_tilde)
-        # n = temp.real + rho * torch.fft.fft2(o_tilde).real
-        n = n.to(torch.complex64)
-        # denominator
-        ATA = torch.multiply(self.AT, self.A)
-        # |A|^2 OTF的intensity/magnitude 为 unit 1
-        d = torch.ones_like(ATA) * rho + ATA
-        # small_value = 1e-8
-        # small_value = torch.full(d.size(), small_value)
-        # small_value = small_value.to(torch.complex64).to(self.device)
-        # d = torch.where(d == 0, small_value, d)
-
-        d = d.to(torch.complex64)
-        o_next = torch.fft.ifft2(n / d).abs()
-        o_next = norm_tensor(o_next)
-        return o_next, mse_loss(o_old, o_next)
-
-    def denoise_step(self, o, u, denoiser, v_old):
-        '''
-        denoise step using pretrained denoiser
-        :param o:
-        :param u:
-        :param rho:
+        :param y:
+        :param o_old:
         :return:
         '''
-        v_tilde = o + u
-        # normalize to [0,1]
-        v_min = torch.min(v_tilde)
-        v_max = torch.max(v_tilde)
-        v_tilde = norm_tensor(v_tilde)
-        # change channel to 3
-        v_next = denoiser(v_tilde.unsqueeze(0).unsqueeze(0)).to(torch.float32).to(self.device)
-        v_next = v_next[0, 0, :, :]
-        v_next = norm_tensor(v_next)
-        # v_next = v_min + (v_max-v_min)*norm_tensor(v_next)
+        df = self.cal_gradient(u,y)
+        o_next = u-self.rho*df
+        return o_next.abs(), mse_loss(o_old, o_next)
 
+    def v_update(self, o, denoiser, v_old):
+        '''
+        Denoiser update
+        :param o:
+        :param denoiser:
+        :param v_old:
+        :return:
+        '''
+        v_next =  denoiser(o.unsqueeze(0).unsqueeze(0)).to(self.device)
+        v_next = v_next[0,0,:,:]
+        v_next = norm_tensor(v_next)
         return v_next, mse_loss(v_old, v_next)
 
-    def pnp_Admm_DH(self, y, opts):
+    def GB_pnp_dh(self, y, opts):
         maxitr = opts['maxitr']
         verbose = opts['verbose']
         gt = opts['gt'].to(self.device)
         y = y.to(self.device)
         self.rho = opts['rho'].to(self.device)
-        self.gamma = opts['gamma']
         self.tol = opts['tol']
         self.eta = opts['eta']
-        mtr_old = np.inf  # set a sufficient large value
+        mtr_old = np.inf
+
 
         """Initialization using Weiner Deconvolution method"""
-        o = torch.fft.ifft2(torch.multiply(torch.fft.fft2(y), self.AT)).abs().to(self.device)
-        o_min = torch.min(o)
-        o_max = torch.max(o)
-        o = norm_tensor(o)
+        o = self.backward_prop(y).to(self.device)
         init = o.cpu()
         # v = torch.zeros_like(y).to(self.device)
         v = o.clone()
         u = torch.zeros_like(y).to(self.device)
-        v, e2 = self.denoise_step(o, u, self.denoiser, v)
-        u += self.rho * (o - v)
 
-        """Start ADMM-PnP"""
+
         pbar = tqdm(range(maxitr))
         if verbose:
             logger = logging.getLogger(__name__)
@@ -152,7 +134,7 @@ class pnp_ADMM_DH():
             logger.addHandler(fh)
             logger.addHandler(sh)
             logger.info('\n Training========================================')
-            logger.info(('\n' + '%13s' * 6) % ('Iteration  ', 'o_PSNR', 'v_PSNR', 'o_residue','v_residue','total_res'))
+            logger.info(('\n' + '%13s' * 5) % ('Iteration  ', 'o_PSNR', 'v_PSNR', 'o_residue','v_residue'))
         for i in pbar:
             if self.visual_check and i % self.visual_check == 0:
                 fig, ax = plt.subplots(2, 3)
@@ -167,28 +149,27 @@ class pnp_ADMM_DH():
                 ax[1, 2].imshow(u.cpu().numpy(), cmap='gray')
                 ax[1, 2].set_title('u_{}'.format(i))
                 fig.show()
-            o, e1 = self.inverse_step(v, u, y, self.rho, o)
-            v, e2 = self.denoise_step(o, u, self.denoiser, v)
-            u += self.rho * (o - v)
-            e3 = torch.sqrt(torch.sum(torch.square(self.rho * (o - v)))) / u.numel()
-            mtr_current = e1 + e2 + e3
+            o_next, e1 = self.o_update(u, y, o)
+            v_next, e2 = self.v_update(o_next, self.denoiser, v)
+            u = v + i/(i+3)*(v_next-v)
+
+            mtr_current = e1 + e2
             o_psnr = psnr(o, gt)
             v_psnr = psnr(v, gt)
-            if mtr_current >= self.eta * mtr_old:
-                    self.rho_update()
-            mtr_old = mtr_current
-
+            # if mtr_current >= self.eta * mtr_old:
+            #     self.rho_update()
+            # mtr_old = mtr_current
+            v = v_next
+            o = o_next
             """ Monitoring. """
             if verbose:
-                info = ("{}, \t {:.2f} \t {:.2f}\t {:4f} \t {:4f} \t {:4f} ").format(i + 1, o_psnr, v_psnr,e1,e2,mtr_current)
+                info = ("{}, \t {:.2f} \t {:.2f}\t {:4f} \t {:4f}").format(i + 1, o_psnr, v_psnr,e1,e2)
                 pbar.set_description(info)
                 writer.add_scalar('update/o_update', e1, i)
                 writer.add_scalar('update/v_update', e2, i)
-                writer.add_scalar('update/u_update', e3, i)
                 writer.add_scalar('update/delta', mtr_current, i)
                 writer.add_scalar('params/rho', self.rho, i)
-                writer.add_scalar('params/gamma', self.gamma, i)
+                # writer.add_scalar('params/gamma', self.gamma, i)
                 writer.add_scalar('params/eta', self.eta, i)
                 writer.add_scalar('metric/v_PSNR', psnr(v, gt), i)
                 writer.add_scalar('metric/o_PSNR', psnr(o, gt), i)
-        return v, o, u

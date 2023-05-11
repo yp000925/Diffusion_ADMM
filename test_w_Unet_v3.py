@@ -63,7 +63,7 @@ rec = norm_tensor(rec)
 solver = pnp_ADMM_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=100)
 A = solver.A
 AT = solver.AT
-opts = dict(rho=torch.tensor([0.1]), maxitr=1000, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
+opts = dict(rho=torch.tensor([0.05]), maxitr=1000, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
             tol=0.0000001, gamma=1, psnr_tol=0, patient=100)
 
 # ---- reconstruction using ADMMPnP-----
