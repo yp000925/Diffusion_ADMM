@@ -202,6 +202,17 @@ def autopad(k, p=None):  # kernel, padding
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
 
+def zero_padding_torch(img, pad_size):
+    orig_shape = img.shape
+    target = torch.zeros(pad_size)
+    target[(pad_size[0]//2-orig_shape[0]//2):(pad_size[0]//2+orig_shape[0]//2+1),(pad_size[1]//2-orig_shape[1]//2):(pad_size[1]//2+orig_shape[1]//2+1)] = img[:,:]
+    return target
+
+def crop_img_torch(img, crop_size):
+    orig_shape = img.shape
+    target = img[(orig_shape[0]//2-crop_size[0]//2):(orig_shape[0]//2+crop_size[0]//2+1),(orig_shape[1]//2-crop_size[1]//2):(orig_shape[1]//2+crop_size[1]//2+1)]
+    return target
+
 def forward_propagation(x, A):
     out = torch.fft.ifft2(torch.multiply(torch.fft.fft2(x), A))
     return out
