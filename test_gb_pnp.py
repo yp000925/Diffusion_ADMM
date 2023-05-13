@@ -33,7 +33,7 @@ print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_gr
 
 """ Load the GT intensity map and get the diffraction pattern"""
 # img = Image.open('test_image.png').resize([512, 512]).convert('L')
-img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
+img = Image.open('test_image2.jpg').resize([256, 256]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity / torch.max(gt_intensity)
@@ -43,40 +43,43 @@ w = 632e-9
 deltax = 3.45e-6
 deltay = 3.45e-6
 distance = 0.02
-nx = 512
-ny = 512
-# ---- forward and backward propagation -----
+nx = 256
+ny = 256
 
-nx_extend = 768
-ny_extend = 768
+nx_extend = 512
+ny_extend = 512
 pad_size = [nx_extend,ny_extend]
+# ---- set solver -----
+# solver = GB_PNP_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=50)
+solver = GB_PNP_DH(w, nx_extend, ny_extend, deltax, deltay, distance, model, device=device, visual_check=50,pad_size=pad_size)
+gt_intensity = zero_padding_torch(gt_intensity,pad_size)
+A = solver.A
+AT = solver.AT
+opts = dict(rho=torch.tensor([2]), maxitr=300, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
+            tol=0.0000001,psnr_tol=0)
+
+# ---- forward and backward propagation -----
+holo = solver.forward_op(gt_intensity.to(device),crop_size=[nx,ny])
+holo = torch.abs(holo)
 # A = generate_otf_torch(w, nx, ny, deltax, deltay, distance)
 # holo = ifft2(torch.multiply(A, fft2(gt_intensity)))  # 此处应该是gt_intensity才对
 
-A = generate_otf_torch(w, nx_extend, ny_extend, deltax, deltay, distance)
-holo = ifft2(torch.multiply(A, fft2(zero_padding_torch(gt_intensity,pad_size))))  # 此处应该是gt_intensity才对
-holo = torch.abs(holo)
+# A = generate_otf_torch(w, nx_extend, ny_extend, deltax, deltay, distance)
+# holo = ifft2(torch.multiply(A, fft2(zero_padding_torch(gt_intensity,pad_size))))  # 此处应该是gt_intensity才对
+# holo = torch.abs(holo)
 # holo = norm_tensor(holo)
 # holo = holo / torch.max(holo)
 # Image.fromarray(holo.numpy()*255).show(title='hologram(diffraction pattern)')
-AT = generate_otf_torch(w, nx, ny, deltax, deltay, -distance)
-rec = ifft2(torch.multiply(AT, fft2(holo)))
+# AT = generate_otf_torch(w, nx, ny, deltax, deltay, -distance)
+# rec = ifft2(torch.multiply(AT, fft2(holo)))
 
-AT = generate_otf_torch(w, nx_extend, ny_extend, deltax, deltay, -distance)
-rec = ifft2(torch.multiply(AT, fft2(holo)))
-
+rec = solver.backward_op(holo.to(device), pad_size=pad_size)
 rec = torch.abs(rec)
 rec = norm_tensor(rec)
 # rec = rec / torch.max(rec)
 # Image.fromarray(rec.numpy()*255).show(title='BP')
 
-# ---- set solver -----
-# solver = GB_PNP_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=50)
-solver = GB_PNP_DH(w, nx_extend, ny_extend, deltax, deltay, distance, model, device=device, visual_check=50)
-A = solver.A
-AT = solver.AT
-opts = dict(rho=torch.tensor([2]), maxitr=300, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
-            tol=0.0000001,psnr_tol=0)
+
 
 # ---- reconstruction using ADMMPnP-----
 with torch.no_grad():

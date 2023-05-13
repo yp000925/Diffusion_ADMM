@@ -33,9 +33,9 @@ writer = SummaryWriter(out_dir + timestr)
 
 class GB_PNP_DH():
     def __init__(self, wavelength, nx, ny, deltax, deltay, distance, denoiser, n_c=1, device=None, visual_check=False,
-                 pad_size=[768,768]):
-        self.A = generate_otf_torch(wavelength, nx, ny, deltax, deltay, distance)
-        self.AT = generate_otf_torch(wavelength, nx, ny, deltax, deltay, -distance)
+                 pad_size= None):
+        self.A = generate_otf_torch(wavelength, nx, ny, deltax, deltay, distance,pad_size = pad_size)
+        self.AT = generate_otf_torch(wavelength, nx, ny, deltax, deltay, -distance,pad_size = pad_size)
         self.denoiser = denoiser
         self.n_c = n_c
         self.visual_check = visual_check
@@ -52,27 +52,25 @@ class GB_PNP_DH():
         self.pad_size = pad_size
         # self.mu = 1
 
-    # def forward_prop(self, f_in):
-    #     fs_out = torch.multiply(torch.fft.fft2(f_in), self.A)
-    #     f_out = torch.fft.ifft2(fs_out)
-    #     return f_out
-    #
-    # def backward_prop(self, f_in):
-    #     fs_out = torch.multiply(torch.fft.fft2(f_in), self.AT)
-    #     f_out = torch.fft.ifft2(fs_out)
-    #     return f_out
-
-    def forward_prop(self, f_in, crop_size):
+    def forward_prop(self, f_in):
         fs_out = torch.multiply(torch.fft.fft2(f_in), self.A)
         f_out = torch.fft.ifft2(fs_out)
-        f_out = crop_img_torch(f_out, crop_size=crop_size)
         return f_out
 
-    def backward_prop(self, f_in, pad_size):
-        f_in = zero_padding_torch(f_in,pad_size=pad_size)
+    def backward_prop(self, f_in):
         fs_out = torch.multiply(torch.fft.fft2(f_in), self.AT)
         f_out = torch.fft.ifft2(fs_out)
         return f_out
+
+    def forward_op(self, x_in, crop_size):
+        x_out = self.forward_prop(x_in)
+        x_out = crop_img_torch(x_out, crop_size=crop_size)
+        return x_out
+
+    def backward_op(self, x_in, pad_size):
+        x_out = zero_padding_torch(x_in,pad_size=pad_size)
+        x_out = self.backward_prop(x_out)
+        return x_out
 
     def cal_gradient(self, x, y):
         '''
@@ -81,10 +79,10 @@ class GB_PNP_DH():
         :param y: Intensity image (absolute value)
         :return: Wirtinger gradient
         '''
-        temp = self.forward_prop(x,crop_size=y.shape)
+        temp = self.forward_op(x,crop_size=y.shape)
         # temp = (torch.abs(temp) - y)
         temp = (torch.abs(temp)-y)*torch.exp(1j*torch.angle(temp))
-        gradient = 0.5 * self.backward_prop(temp,pad_size=self.pad_size)
+        gradient = 0.5 * self.backward_op(temp,pad_size=self.pad_size)
         return gradient
 
     def o_update(self, u, y, o_old):
@@ -128,7 +126,7 @@ class GB_PNP_DH():
         mtr_old = np.inf
 
         """Initialization using Weiner Deconvolution method"""
-        o = self.backward_prop(y).to(self.device)
+        o = self.backward_op(y,pad_size=self.pad_size).to(self.device)
         init = o.abs().cpu()
         v = torch.zeros_like(y).to(self.device)
         u = o.clone()
