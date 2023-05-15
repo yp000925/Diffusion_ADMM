@@ -237,6 +237,13 @@ def crop_img_torch(img, crop_size):
     target = img[x_idx:(x_idx + cw),y_idx:(y_idx + ch )].type(img.type())
     return target
 
+def crop_img_np(img, crop_size):
+    ow,oh = img.shape
+    cw,ch = crop_size
+    x_idx = ow//2-cw//2
+    y_idx = oh//2-ch//2
+    target = img[x_idx:(x_idx + cw),y_idx:(y_idx + ch )]
+    return target
 
 def forward_propagation(x, A):
     out = torch.fft.ifft2(torch.multiply(torch.fft.fft2(x), A))

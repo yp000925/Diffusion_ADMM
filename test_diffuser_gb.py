@@ -4,7 +4,7 @@ use test image -> ImageNet data
 import os
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-from pnp_gb import GB_PNP_DH
+from pnp_gb_diffuser import diffuser_GB_DH
 from utils import *
 import PIL.Image as Image
 import torch
@@ -15,6 +15,7 @@ from utils.functions import generate_otf_torch, psnr,norm_tensor, crop_img_torch
 from torch.fft import fft2, ifft2, fftshift, ifftshift
 import time
 import matplotlib.pyplot as plt
+from models.diffuser import diffusion, diffusion_default
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -24,67 +25,57 @@ np.random.seed(SEED)
 """ Load pre-trained Unet pth"""
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-model = Unet(1, 1, chans=64)
-model = torch.nn.DataParallel(model).to(device)
-ckpt_pth = "/home/zhangyp/project/Diffusion_ADMM/pre_train_exp/Unet/final.pt"
-loader = torch.load(ckpt_pth, map_location=device)
-model.load_state_dict(loader['model_state_dict'])
-print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_grad))
+
+
+denoiser = diffusion(model_pth="256x256_diffusion_uncond.pt", model_type='default', device=device,
+                     silence_diffuser=True)
+diffusion_args = diffusion_default()
+diffusion_args.sigma_0 = 0.5
+diffusion_args.timesteps = 50
+diffusion_args.num_diffusion_timesteps = 2000
+
 
 """ Load the GT intensity map and get the diffraction pattern"""
-img = Image.open('test_image.png').resize([512, 512]).convert('L')
+# img = Image.open('test_image.png').resize([256, 256]).convert('L')
 # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('cameraman.bmp').resize([512, 512]).convert('L')
-# img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
+img = Image.open('USAF1951.jpg').resize([256, 256]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity / torch.max(gt_intensity)
 
 # ---- define propagation kernel -----
 w = 632e-9
-deltax = 3.45e-6
-deltay = 3.45e-6
+deltax = 3.45e-6*2
+deltay = 3.45e-6*2
 distance = 0.02
-nx = 512
-ny = 512
+nx = 256
+ny = 256
 
-nx_extend = 768
-ny_extend = 768
+nx_extend = 512
+ny_extend = 512
 pad_size = [nx_extend,ny_extend]
 # ---- set solver -----
 # solver = GB_PNP_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=50)
-solver = GB_PNP_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=2,pad_size=pad_size)
+solver = diffuser_GB_DH(w, nx, ny, deltax, deltay, distance, denoiser,diffusion_args, device=device, visual_check=1, pad_size=pad_size)
 gt_intensity = zero_padding_torch(gt_intensity,pad_size)
 A = solver.A
 AT = solver.AT
-opts = dict(rho=torch.tensor([2]), maxitr=15, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
+opts = dict(rho=torch.tensor([3]), maxitr=15, verbose=True, gt=torch.tensor(gt_intensity), eta=0.9,
             tol=0.0000001,psnr_tol=0)
 
 # ---- forward and backward propagation -----
 holo = solver.forward_op(gt_intensity.to(device),crop_size=[nx,ny])
 holo = torch.abs(holo)
-# A = generate_otf_torch(w, nx, ny, deltax, deltay, distance)
-# holo = ifft2(torch.multiply(A, fft2(gt_intensity)))  # 此处应该是gt_intensity才对
-
-# A = generate_otf_torch(w, nx_extend, ny_extend, deltax, deltay, distance)
-# holo = ifft2(torch.multiply(A, fft2(zero_padding_torch(gt_intensity,pad_size))))  # 此处应该是gt_intensity才对
-# holo = torch.abs(holo)
-# holo = norm_tensor(holo)
-# holo = holo / torch.max(holo)
-# Image.fromarray(holo.numpy()*255).show(title='hologram(diffraction pattern)')
-# AT = generate_otf_torch(w, nx, ny, deltax, deltay, -distance)
-# rec = ifft2(torch.multiply(AT, fft2(holo)))
 
 rec = solver.backward_op(holo.to(device), pad_size=pad_size)
 rec = torch.abs(rec)
 rec = norm_tensor(rec)
-# rec = rec / torch.max(rec)
-# Image.fromarray(rec.numpy()*255).show(title='BP')
 
 
 
 # ---- reconstruction using ADMMPnP-----
 with torch.no_grad():
-    out = solver.GB_pnp_dh(holo, opts,save= False)
+    out = solver.GB_pnp_dh(holo, opts,save =True)
     fig, ax = plt.subplots(2, 3)
     ax[0,0].imshow(holo.cpu().numpy(), cmap='gray')
     ax[0,1].imshow(gt_intensity.cpu().numpy(), cmap='gray')
