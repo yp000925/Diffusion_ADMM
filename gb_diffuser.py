@@ -39,6 +39,14 @@ out_dir = out_dir + timestr
 if not os.path.exists(out_dir):
     os.mkdir(out_dir)
 writer = SummaryWriter(out_dir)
+def inverse_data_transform(config, X):
+    if hasattr(config, "image_mean"):
+        X = X + config.image_mean.to(X.device)[None, ...]
+
+    elif config.rescaled:
+        X = (X + 1.0) / 2.0
+
+    return torch.clamp(X, 0.0, 1.0)
 def dict2namespace(config):
     namespace = argparse.Namespace()
     for key, value in config.items():
@@ -91,12 +99,25 @@ def model_defaults():
         use_fp16=False,
         use_new_attention_order=False,
         task = 'denoise'
+
     )
     return dict2namespace(res)
-
+def diffusion_default():
+    res = dict(
+        beta_schedule = "linear",
+        beta_start = 0.0001,
+        beta_end = 0.02,
+        num_diffusion_timesteps=1000,
+        sigma_0 = 0.015,
+        eta = 0.85,
+        etaB=1,
+        timesteps=2,
+        gamma = 0.05
+    )
+    return dict2namespace(res)
 class diffuser_GB_DH():
     def __init__(self, wavelength, nx, ny, deltax, deltay, distance, model_pth, diffusion_args, device=None,
-                 visual_check=False, pad_size=None):
+                 visual_check=None, pad_size=None):
         self.A = generate_otf_torch(wavelength, nx, ny, deltax, deltay, distance,pad_size = pad_size)
         self.AT = generate_otf_torch(wavelength, nx, ny, deltax, deltay, -distance,pad_size = pad_size)
         self.diffusion_args = diffusion_args
@@ -108,9 +129,7 @@ class diffuser_GB_DH():
             self.device = 'cpu'
         # self.n_c = n_c
         self.visual_check = visual_check
-
-        self.rho = 1
-        self.gamma = 1
+        self.gamma = diffusion_args.gamma
         self.error = 0
         self.pad_size = pad_size
         self.crop_size = [nx, ny]
@@ -131,23 +150,25 @@ class diffuser_GB_DH():
         self.H_funcs = Denoising(self.data_args.channels, self.data_args.image_size, self.device)
 
     def forward_prop(self, f_in):
-        fs_out = torch.multiply(torch.fft.fft2(f_in), self.A)
+        fs_out = torch.multiply(torch.fft.fft2(f_in), self.A.expand(f_in.shape))
         f_out = torch.fft.ifft2(fs_out)
         return f_out
 
     def backward_prop(self, f_in):
-        fs_out = torch.multiply(torch.fft.fft2(f_in), self.AT)
+        fs_out = torch.multiply(torch.fft.fft2(f_in), self.AT.expand(f_in.shape))
         f_out = torch.fft.ifft2(fs_out)
         return f_out
 
-    def forward_op(self, x_in, crop_size):
-        x_out = self.forward_prop(x_in)
-        x_out = crop_img_torch(x_out, crop_size=crop_size)
+    def forward_op(self, x_in):
+        x_out = zero_padding_torch(x_in, pad_size=self.pad_size)
+        x_out = self.forward_prop(x_out)
+        x_out = crop_img_torch(x_out, crop_size=self.crop_size)
         return x_out
 
-    def backward_op(self, x_in, pad_size):
-        x_out = zero_padding_torch(x_in, pad_size=pad_size)
+    def backward_op(self, x_in):
+        x_out = zero_padding_torch(x_in, pad_size=self.pad_size)
         x_out = self.backward_prop(x_out)
+        x_out = crop_img_torch(x_out, crop_size=self.crop_size)
         return x_out
 
     def cal_gradient(self, x, y):
@@ -157,15 +178,16 @@ class diffuser_GB_DH():
         :param y: Intensity image (absolute value)
         :return: Wirtinger gradient
         '''
-        temp = self.forward_op(x, crop_size=y.shape)
-        temp = (torch.abs(temp) - y)
+        Ax = self.forward_op(x)
+        AtAx = self.backward_op(Ax.abs())
+        Aty= self.backward_op(y)
         # temp = (torch.abs(temp) - y) * torch.exp(1j * torch.angle(temp))
-        gradient =self.backward_op(temp, pad_size=self.pad_size)
+        gradient =AtAx.abs() - Aty.abs()
         return gradient
 
 
     def reconstruction(self, holo, last=False):
-        y_0 = self.backward_op(holo, pad_size=self.pad_size).abs().to(self.device)
+        y_0 = self.backward_op(holo).abs().to(self.device)
         y_0 = self.H_funcs.H(y_0)
         y_0 = y_0 + self.diffusion_args.sigma_0 * torch.randn_like(y_0)
         x = torch.randn(
@@ -190,10 +212,11 @@ class diffuser_GB_DH():
         with torch.no_grad():
             x = efficient_generalized_steps_with_physics(x, seq, self.model, betas, self.H_funcs, y_0, holo, sigma_0, \
                                         etaB=self.diffusion_args.etaB, etaA=self.diffusion_args.eta, etaC=self.diffusion_args.eta, cls_fn=None,
-                                                     classes=None,gamma=self.gamma, gradient_cal=self.cal_gradient)
+                                                     classes=None,gamma=self.gamma, gradient_cal=self.cal_gradient, visual_check=self.visual_check)
             if last:
                 x = x[0][-1]
-        return x
+            out = [inverse_data_transform(self.data_args, y) for y in x]
+        return out
 
 
 def get_beta_schedule(beta_schedule,beta_start, beta_end, num_diffusion_timesteps):
@@ -228,6 +251,7 @@ def get_beta_schedule(beta_schedule,beta_start, beta_end, num_diffusion_timestep
     assert betas.shape == (num_diffusion_timesteps,)
     return betas
 
+
 if __name__ == "__main__":
     import  PIL.Image as Image
     import torch
@@ -238,7 +262,6 @@ if __name__ == "__main__":
     from torch.fft import fft2, ifft2, fftshift, ifftshift
     import time
     import matplotlib.pyplot as plt
-    from models.diffuser import diffusion, diffusion_default
 
     SEED = 42
     torch.manual_seed(SEED)
@@ -250,21 +273,20 @@ if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
-    denoiser = diffusion(model_pth="256x256_diffusion_uncond.pt", model_type='default', device=device,
-                         silence_diffuser=True)
     diffusion_args = diffusion_default()
     diffusion_args.sigma_0 = 0.2
     diffusion_args.timesteps = 50
-    diffusion_args.num_diffusion_timesteps = 1000
+    diffusion_args.num_diffusion_timesteps = 100
+    diffusion_args.gamma = 0.05
 
 
     """ Load the GT intensity map and get the diffraction pattern"""
-    # img = Image.open('test_image.png').resize([256, 256]).convert('L')
+    img = Image.open('test_image.png').resize([256, 256]).convert('L')
     # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
     # img = Image.open('cameraman.bmp').resize([512, 512]).convert('L')
     # img = Image.open('USAF1951.jpg').resize([256, 256]).convert('L')
-    # gt_intensity = torch.from_numpy(np.array(img))
-    # gt_intensity = gt_intensity / torch.max(gt_intensity)
+    gt_intensity = torch.from_numpy(np.array(img))
+    gt_intensity = gt_intensity / torch.max(gt_intensity)
     #
 
     """ Load the GT intensity map and get the diffraction pattern"""
@@ -272,11 +294,11 @@ if __name__ == "__main__":
     # img = Image.open('ExpSample/DCOD/USAF/hologram.tif').resize([256, 256])
     # img = np.array(img)
     # img = img/img.max()
-    img = Image.open('ExpSample/DCOD/USAF/hologram.tif')
-    img = np.array(img)
-    img = img/img.max()
-    holo = torch.from_numpy(np.array(img)).to(torch.float32)
-    holo = crop_img_torch(holo,crop_size=[360,360])
+    # img = Image.open('ExpSample/DCOD/USAF/hologram.tif')
+    # img = np.array(img)
+    # img = img/img.max()
+    # holo = torch.from_numpy(np.array(img)).to(torch.float32)
+    # holo = crop_img_torch(holo,crop_size=[360,360])
 
     # ---- define propagation kernel -----
     w = 532.3e-9
@@ -285,15 +307,14 @@ if __name__ == "__main__":
     deltax = 1.12e-6
     deltay = 1.12e-6
     distance = 1065e-6
-    nx = 360
-    ny = 360
+    nx = 256
+    ny = 256
 
-    nx_extend = 512
-    ny_extend = 512
+    nx_extend = 256
+    ny_extend = 256
     pad_size = [nx_extend,ny_extend]
 
-    # holo = holo.unsqueeze(0).unsqueeze(0)
-    # holo = holo.to(device)
+
     # ---- set solver -----
     # solver = GB_PNP_DH(w, nx, ny, deltax, deltay, distance, model, device=device, visual_check=50)
     solver = diffuser_GB_DH(w, nx, ny, deltax, deltay, distance,model_pth="256x256_diffusion_uncond.pt",diffusion_args=diffusion_args,
@@ -301,19 +322,18 @@ if __name__ == "__main__":
     # gt_intensity = zero_padding_torch(gt_intensity,pad_size)
     A = solver.A
     AT = solver.AT
-    opts = dict(rho=torch.tensor([1.5]), maxitr=15, verbose=True, gt=torch.ones_like(holo), eta=0.9,
-                tol=0.0000001,psnr_tol=0)
 
     # ---- forward and backward propagation -----
-    # holo = solver.forward_op(gt_intensity.to(device),crop_size=[nx,ny])
-    # holo = torch.abs(holo)
+    holo = solver.forward_op(gt_intensity.to(device))
+    holo = torch.abs(holo)
+    holo = holo.expand(1,3,nx,ny)
+    holo = holo.to(device)
 
-
-    rec = solver.backward_op(holo.to(device), pad_size=pad_size)
+    rec = solver.backward_op(holo.to(device))
     rec = torch.abs(rec)
     rec = norm_tensor(rec)
-    # plt.imshow(rec.cpu().numpy(),cmap='gray')
-    # plt.show()
+    plt.imshow(rec[0,0,:,:].cpu().numpy(),cmap='gray')
+    plt.show()
 
 
     # ---- reconstruction using ADMMPnP-----

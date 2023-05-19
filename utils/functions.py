@@ -220,21 +220,42 @@ def autopad(k, p=None):  # kernel, padding
 
 
 def zero_padding_torch(img, pad_size):
-    ow,oh = img.shape
-    pw,ph = pad_size
-    target = torch.zeros(pad_size).type(img.type())
-    x_idx = pw // 2 - ow // 2
-    y_idx = ph // 2 - oh // 2
-    target[x_idx:(x_idx + ow), y_idx:(y_idx + oh)] = img[:, :]
+    if len(img.shape)==4:
+        b,c,ow,oh = img.shape
+        pw,ph = pad_size
+        target = torch.zeros([b,c,pw,ph]).type(img.type())
+        x_idx = pw // 2 - ow // 2
+        y_idx = ph // 2 - oh // 2
+        target[:,:,x_idx:(x_idx + ow), y_idx:(y_idx + oh)] = img[:,:,:, :]
+    elif len(img.shape) == 2:
+        ow,oh = img.shape
+        pw,ph = pad_size
+        target = torch.zeros(pad_size).type(img.type())
+        x_idx = pw // 2 - ow // 2
+        y_idx = ph // 2 - oh // 2
+        target[x_idx:(x_idx + ow), y_idx:(y_idx + oh)] = img[:, :]
+    else:
+        print("Propagating unresolved img dimension with ", img.shape)
+        raise ValueError
     return target
 
 
 def crop_img_torch(img, crop_size):
-    ow,oh = img.shape
-    cw,ch = crop_size
-    x_idx = ow//2-cw//2
-    y_idx = oh//2-ch//2
-    target = img[x_idx:(x_idx + cw),y_idx:(y_idx + ch )].type(img.type())
+    if len(img.shape)==4:
+        b,c,ow,oh = img.shape
+        cw,ch = crop_size
+        x_idx = ow//2-cw//2
+        y_idx = oh//2-ch//2
+        target = img[:,:,x_idx:(x_idx + cw),y_idx:(y_idx + ch )].type(img.type())
+    elif len(img.shape) == 2:
+        ow,oh = img.shape
+        cw,ch = crop_size
+        x_idx = ow//2-cw//2
+        y_idx = oh//2-ch//2
+        target = img[x_idx:(x_idx + cw),y_idx:(y_idx + ch )].type(img.type())
+    else:
+        print("Propagating unresolved img dimension with ", img.shape)
+        raise ValueError
     return target
 
 def crop_img_np(img, crop_size):

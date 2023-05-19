@@ -1,4 +1,5 @@
 import torch
+import matplotlib.pyplot as plt
 ##--------------------svd replacement --------------------##
 class H_functions:
     """
@@ -337,7 +338,7 @@ def efficient_generalized_steps(x, seq, model, b, H_funcs, y_0, sigma_0, etaB, e
     return xs, x0_preds
 
 
-def efficient_generalized_steps_with_physics(x, seq, model, b, H_funcs, y_0, y, sigma_0, etaB, etaA, etaC, gamma, gradient_cal, silence_diffuser=False,cls_fn=None, classes=None):
+def efficient_generalized_steps_with_physics(x, seq, model, b, H_funcs, y_0, y, sigma_0, etaB, etaA, etaC, gamma, gradient_cal, silence_diffuser=False,cls_fn=None, classes=None,visual_check=None):
     '''
 
     :param x: random init
@@ -458,5 +459,14 @@ def efficient_generalized_steps_with_physics(x, seq, model, b, H_funcs, y_0, y, 
 
             x0_preds.append(x0_t.to('cpu'))
             xs.append(xt_next.to('cpu'))
+            if visual_check and (i + 1) % visual_check == 0:
+                x0_t_np = x0_t[0].permute(1,2,0).cpu().numpy()
+                xt_next_np = xt_next[0].permute(1,2,0).cpu().numpy()
+                fig, ax = plt.subplots(1,2)
+                ax[0].imshow(x0_t_np)
+                ax[0].set_title(('x0_t {}').format(i))
+                ax[1].imshow(xt_next_np)
+                ax[1].set_title(('xt_next {}').format(i))
+                plt.show()
 
-    return xs, x0_preds
+        return xs, x0_preds
