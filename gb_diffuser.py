@@ -6,7 +6,7 @@
 """
 import logging
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import numpy as np
 from PIL import Image
 import torch
@@ -186,7 +186,7 @@ class diffuser_GB_DH():
         return gradient
 
 
-    def reconstruction(self, holo, last=False):
+    def reconstruction(self, holo, last=True):
         y_0 = self.backward_op(holo).abs().to(self.device)
         y_0 = self.H_funcs.H(y_0)
         y_0 = y_0 + self.diffusion_args.sigma_0 * torch.randn_like(y_0)
@@ -210,13 +210,15 @@ class diffuser_GB_DH():
         skip = betas.shape[0] // timesteps
         seq = range(0, betas.shape[0], skip)
         with torch.no_grad():
-            x = efficient_generalized_steps_with_physics(x, seq, self.model, betas, self.H_funcs, y_0, holo, sigma_0, \
+            xs, x0_preds = efficient_generalized_steps_with_physics(x, seq, self.model, betas, self.H_funcs, y_0, holo, sigma_0, \
                                         etaB=self.diffusion_args.etaB, etaA=self.diffusion_args.eta, etaC=self.diffusion_args.eta, cls_fn=None,
                                                      classes=None,gamma=self.gamma, gradient_cal=self.cal_gradient, visual_check=self.visual_check)
             if last:
-                x = x[0][-1]
-            out = [inverse_data_transform(self.data_args, y) for y in x]
-        return out
+                xs = xs[0][-1]
+                return inverse_data_transform(self.data_args,xs)
+            else:
+                out = [inverse_data_transform(self.data_args, y) for y in xs]
+                return out
 
 
 def get_beta_schedule(beta_schedule,beta_start, beta_end, num_diffusion_timesteps):
@@ -276,8 +278,8 @@ if __name__ == "__main__":
     diffusion_args = diffusion_default()
     diffusion_args.sigma_0 = 0.2
     diffusion_args.timesteps = 50
-    diffusion_args.num_diffusion_timesteps = 100
-    diffusion_args.gamma = 0.05
+    diffusion_args.num_diffusion_timesteps = 1000
+    diffusion_args.gamma = 0.2
 
 
     """ Load the GT intensity map and get the diffraction pattern"""
@@ -339,4 +341,4 @@ if __name__ == "__main__":
     # ---- reconstruction using ADMMPnP-----
     with torch.no_grad():
         out = solver.reconstruction(holo)
-        fig, ax = plt.subplots(2, 3)
+        # fig, ax = plt.subplots(2, 3)

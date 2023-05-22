@@ -393,6 +393,7 @@ def efficient_generalized_steps_with_physics(x, seq, model, b, H_funcs, y_0, y, 
         xs = [x]
 
         #iterate over the timesteps
+        cnt = 0
         for i, j in tqdm(zip(reversed(seq), reversed(seq_next)),disable=silence_diffuser):
             t = (torch.ones(n) * i).to(x.device)
             next_t = (torch.ones(n) * j).to(x.device)
@@ -459,7 +460,7 @@ def efficient_generalized_steps_with_physics(x, seq, model, b, H_funcs, y_0, y, 
 
             x0_preds.append(x0_t.to('cpu'))
             xs.append(xt_next.to('cpu'))
-            if visual_check and (i + 1) % visual_check == 0:
+            if visual_check and (cnt + 1) % visual_check == 0:
                 x0_t_np = x0_t[0].permute(1,2,0).cpu().numpy()
                 xt_next_np = xt_next[0].permute(1,2,0).cpu().numpy()
                 fig, ax = plt.subplots(1,2)
@@ -468,5 +469,6 @@ def efficient_generalized_steps_with_physics(x, seq, model, b, H_funcs, y_0, y, 
                 ax[1].imshow(xt_next_np)
                 ax[1].set_title(('xt_next {}').format(i))
                 plt.show()
+            cnt+=1
 
         return xs, x0_preds
