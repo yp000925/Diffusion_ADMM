@@ -276,6 +276,17 @@ def prepross_bg(img, bg):
     out = (temp - np.min(temp)) / (1 - np.min(temp))
     return out
 
+import PIL.Image
+
+def display_sample(sample, i):
+    image_processed = sample.cpu().permute(0, 2, 3, 1)
+    image_processed = (image_processed + 1.0) * 127.5
+    image_processed = image_processed.numpy().astype(np.uint8)
+
+    image_pil = PIL.Image.fromarray(image_processed[0])
+    plt.imshow(image_pil)
+    plt.title(f"Image at step {i}")
+    plt.show()
 
 if __name__ == "__main__":
     arr = torch.rand([1, 5, 5])
