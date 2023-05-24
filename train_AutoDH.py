@@ -41,7 +41,8 @@ if not os.path.exists(out_dir):
 writer = SummaryWriter(out_dir + timestr)
 
 """ Load the GT intensity map and get the diffraction pattern"""
-img = Image.open('test_image.png').resize([512, 512]).convert('L')
+# img = Image.open('test_image.png').resize([512, 512]).convert('L')
+img = Image.open('ExpSample/celeA/testsample.jpeg').resize([512, 512]).convert('L')
 # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))

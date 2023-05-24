@@ -200,7 +200,7 @@ def gray_to_rgb(img):
 
 def rgb_to_gray(arr_in):
     if torch.is_tensor(arr_in):
-        arr_in = arr_in.numpy()
+        arr_in = arr_in.cpu().numpy()
     if len(arr_in.shape) == 4:
         # means [B,3,H,W]
         arr_in = arr_in.squeeze(0)
@@ -212,6 +212,11 @@ def rgb_to_gray(arr_in):
     return arr_out
 
 
+def rgb_to_gray_tensor(tensor_in):
+    tensor_out = torchvision.transforms.functional.rgb_to_grayscale(tensor_in)
+    return tensor_out
+
+
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
     if p is None:
@@ -220,16 +225,16 @@ def autopad(k, p=None):  # kernel, padding
 
 
 def zero_padding_torch(img, pad_size):
-    if len(img.shape)==4:
-        b,c,ow,oh = img.shape
-        pw,ph = pad_size
-        target = torch.zeros([b,c,pw,ph]).type(img.type())
+    if len(img.shape) == 4:
+        b, c, ow, oh = img.shape
+        pw, ph = pad_size
+        target = torch.zeros([b, c, pw, ph]).type(img.type())
         x_idx = pw // 2 - ow // 2
         y_idx = ph // 2 - oh // 2
-        target[:,:,x_idx:(x_idx + ow), y_idx:(y_idx + oh)] = img[:,:,:, :]
+        target[:, :, x_idx:(x_idx + ow), y_idx:(y_idx + oh)] = img[:, :, :, :]
     elif len(img.shape) == 2:
-        ow,oh = img.shape
-        pw,ph = pad_size
+        ow, oh = img.shape
+        pw, ph = pad_size
         target = torch.zeros(pad_size).type(img.type())
         x_idx = pw // 2 - ow // 2
         y_idx = ph // 2 - oh // 2
@@ -241,30 +246,32 @@ def zero_padding_torch(img, pad_size):
 
 
 def crop_img_torch(img, crop_size):
-    if len(img.shape)==4:
-        b,c,ow,oh = img.shape
-        cw,ch = crop_size
-        x_idx = ow//2-cw//2
-        y_idx = oh//2-ch//2
-        target = img[:,:,x_idx:(x_idx + cw),y_idx:(y_idx + ch )].type(img.type())
+    if len(img.shape) == 4:
+        b, c, ow, oh = img.shape
+        cw, ch = crop_size
+        x_idx = ow // 2 - cw // 2
+        y_idx = oh // 2 - ch // 2
+        target = img[:, :, x_idx:(x_idx + cw), y_idx:(y_idx + ch)].type(img.type())
     elif len(img.shape) == 2:
-        ow,oh = img.shape
-        cw,ch = crop_size
-        x_idx = ow//2-cw//2
-        y_idx = oh//2-ch//2
-        target = img[x_idx:(x_idx + cw),y_idx:(y_idx + ch )].type(img.type())
+        ow, oh = img.shape
+        cw, ch = crop_size
+        x_idx = ow // 2 - cw // 2
+        y_idx = oh // 2 - ch // 2
+        target = img[x_idx:(x_idx + cw), y_idx:(y_idx + ch)].type(img.type())
     else:
         print("Propagating unresolved img dimension with ", img.shape)
         raise ValueError
     return target
 
+
 def crop_img_np(img, crop_size):
-    ow,oh = img.shape
-    cw,ch = crop_size
-    x_idx = ow//2-cw//2
-    y_idx = oh//2-ch//2
-    target = img[x_idx:(x_idx + cw),y_idx:(y_idx + ch )]
+    ow, oh = img.shape
+    cw, ch = crop_size
+    x_idx = ow // 2 - cw // 2
+    y_idx = oh // 2 - ch // 2
+    target = img[x_idx:(x_idx + cw), y_idx:(y_idx + ch)]
     return target
+
 
 def forward_propagation(x, A):
     out = torch.fft.ifft2(torch.multiply(torch.fft.fft2(x), A))
@@ -276,17 +283,29 @@ def prepross_bg(img, bg):
     out = (temp - np.min(temp)) / (1 - np.min(temp))
     return out
 
+
 import PIL.Image
+
 
 def display_sample(sample, i):
     image_processed = sample.cpu().permute(0, 2, 3, 1)
-    image_processed = (image_processed + 1.0) * 127.5
+    # image_processed = (image_processed + 1.0) * 127.5
+    image_processed = norm_tensor(image_processed) * 255.0
     image_processed = image_processed.numpy().astype(np.uint8)
+    if image_processed.shape[-1] == 1:
+        image_pil = PIL.Image.fromarray(image_processed[0, :, :, 0])
+        plt.imshow(image_pil, cmap='gray')
+        plt.title(f"Image at step {i}")
+        plt.show()
+    elif image_processed.shape[-1] == 3:
+        image_pil = PIL.Image.fromarray(image_processed[0])
+        plt.imshow(image_pil)
+        plt.title(f"Image at step {i}")
+        plt.show()
+    else:
+        print("Unexpected shape")
+        raise ValueError
 
-    image_pil = PIL.Image.fromarray(image_processed[0])
-    plt.imshow(image_pil)
-    plt.title(f"Image at step {i}")
-    plt.show()
 
 if __name__ == "__main__":
     arr = torch.rand([1, 5, 5])

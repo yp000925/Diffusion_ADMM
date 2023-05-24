@@ -205,10 +205,9 @@ holo = holo.expand(1,1,nx,ny).to(device)
 # test = gt_intensity + 0.2*torch.randn(gt_intensity.shape)
 # test = test.expand(1,3,nx,ny).to(device)
 # display_sample(test,0)
-holo_noisy = holo + 0.2*torch.randn(holo.shape)
-out = diffuser.reconstruction(holo_noisy, gamma=0.9,visual_check=10)
-psnr_holo = psnr(holo_noisy,holo)
-print(psnr_holo)
+
+out = diffuser.reconstruction(holo, gamma=0.9,visual_check=10)
+
 fig, ax = plt.subplots(2, 2)
 ax[0,0].imshow(holo[0,0,:,:].cpu().numpy(), cmap='gray')
 ax[0,1].imshow(gt_intensity.cpu().numpy(), cmap='gray')

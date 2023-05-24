@@ -3,7 +3,7 @@ use test image -> ImageNet data
 '''
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from pnp_admm_Unet1c_V2 import pnp_ADMM_DH
 from utils import *
 import PIL.Image as Image
@@ -37,7 +37,8 @@ print('#Parameters:', sum(p.numel() for p in model.parameters() if p.requires_gr
 
 """ Load the GT intensity map and get the diffraction pattern"""
 # img = Image.open('test_image.png').resize([512, 512]).convert('L')
-img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
+img = Image.open('ExpSample/celeA/testsample.jpeg').resize([512, 512]).convert('L')
+# img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
 gt_intensity = torch.from_numpy(np.array(img))
 gt_intensity = gt_intensity / torch.max(gt_intensity)
