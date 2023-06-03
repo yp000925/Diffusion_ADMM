@@ -40,20 +40,45 @@ if not os.path.exists(out_dir):
     os.mkdir(out_dir)
 writer = SummaryWriter(out_dir + timestr)
 
+
 """ Load the GT intensity map and get the diffraction pattern"""
-img = Image.open('sample.bmp').convert('L')
+bbox = [734,480,734+256,480+256]
+# bbox =[500,490,500+256,490+256]
+img = Image.open('ExpSample/CAO/experiment/E5/obj.bmp').convert('L').crop(bbox)
+bg = Image.open('ExpSample/CAO/experiment/E5/bg.bmp').convert('L').crop(bbox)
+def prepross_bg(img, bg):
+    temp = img / bg
+    out = (temp - np.min(temp)) / (1 - np.min(temp))
+    return out
+processed_img = prepross_bg(np.array(img),np.array(bg)).astype(np.float32)
 # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
-holo = torch.from_numpy(np.array(img))
+holo = torch.from_numpy(processed_img)
 holo = holo / torch.max(holo)
 
 # ---- define propagation kernel -----
-w = 635e-9
-deltax = 1.67e-6
-deltay = 1.67e-6
-distance = 875e-6
-nx = 1000
-ny = 1000
+w = 660e-9
+deltax = 5.86e-6
+deltay = 5.86e-6
+distance = 7.9e-3
+nx = 256
+ny = 256
+
+
+# """ Load the GT intensity map and get the diffraction pattern"""
+# img = Image.open('sample.bmp').convert('L')
+# # img = Image.open('test_image2.jpg').resize([512, 512]).convert('L')
+# # img = Image.open('USAF1951.jpg').resize([512, 512]).convert('L')
+# holo = torch.from_numpy(np.array(img))
+# holo = holo / torch.max(holo)
+#
+# # ---- define propagation kernel -----
+# w = 635e-9
+# deltax = 1.67e-6
+# deltay = 1.67e-6
+# distance = 875e-6
+# nx = 1000
+# ny = 1000
 # ---- forward and backward propagation -----
 A = generate_otf_torch(w, nx, ny, deltax, deltay, distance)
 # holo = ifft2(torch.multiply(A, fft2(gt_intensity)))  # 此处应该是gt_intensity才对
@@ -74,8 +99,8 @@ fig.show()
 
 # ---- Define the network -----
 # net = DHNet(w, nx, ny, deltax, deltay, distance, n_c=1, device=device)
-maxitr = 4000
-visual_check = 500
+maxitr = 1000
+visual_check = 100
 verbose = True
 
 
@@ -89,7 +114,7 @@ o.requires_grad = True
 
 
 # ---- Setting the training params -----
-optimizer = Adam([o], lr=0.0001)
+optimizer = Adam([o], lr=0.001)
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, patience=3, factor=0.5, threshold=0.001,
                                                  verbose=True)
 
@@ -119,12 +144,12 @@ for i in pbar:
         writer.add_scalar('metric/loss', mse_loss, i)
 
     if visual_check and i % visual_check == 0:
-        fig, ax = plt.subplots(1, 3)
+        fig, ax = plt.subplots(1, 2)
         ax[0].imshow(tensor2fig(holo), cmap='gray')
         ax[0].set_title('Hologram')
         # ax[1].imshow(tensor2fig(gt), cmap='gray')
         # ax[1].set_title('GT_initensity')
-        ax[2].imshow(tensor2fig(o), cmap='gray')
+        ax[1].imshow(tensor2fig(o), cmap='gray')
         # ax[2].set_title(('o_{} \n PSNR{:.2f}').format(i, o_psnr))
         fig.show()
 fig.savefig(out_dir + timestr +'output.jpg')

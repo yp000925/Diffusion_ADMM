@@ -34,7 +34,7 @@ def diffusion_default():
         beta_schedule= "linear",
         beta_start=0.0001,
         clip_sample= True,
-        num_train_timesteps= 30,
+        num_train_timesteps= 50,
         prediction_type="epsilon",
         trained_betas= None,
         variance_type= "fixed_small",
@@ -146,7 +146,9 @@ torch.manual_seed(SEED)
 torch.cuda.manual_seed(SEED)
 np.random.seed(SEED)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
-img = Image.open('ExpSample/celeA/testsample.jpeg').resize([256, 256]).convert('L')
+# img = Image.open('ExpSample/celeA/testsample.jpeg').resize([256, 256]).convert('L')
+
+img = Image.open('ExpSample/CAO/cell.jpeg').resize([256, 256]).convert('L')
 # img = Image.open('cameraman.bmp').resize([256,256]).convert('L')
 # img = Image.open('test_image2.jpg').resize([256,256]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([256,256]).convert('L')
@@ -217,3 +219,11 @@ ax[1,1].imshow(out[0,0,:,:].cpu().numpy(), cmap='gray')
 ax[1,1].set_title(('out\n PSNR{:.2f}').format(psnr(out[0,0,:,:].cpu(), gt_intensity.cpu()).numpy()))
 fig.show()
 
+fig, ax = plt.subplots(2, 2)
+ax[0,0].imshow(holo[0,0,:,:].cpu().numpy())
+ax[0,1].imshow(gt_intensity.cpu().numpy())
+ax[1,0].imshow(rec.cpu().numpy())
+ax[1,0].set_title(('BP \n PSNR{:.2f}').format(psnr(rec.cpu(), gt_intensity.cpu()).numpy()))
+ax[1,1].imshow(out[0,0,:,:].cpu().numpy())
+ax[1,1].set_title(('out\n PSNR{:.2f}').format(psnr(out[0,0,:,:].cpu(), gt_intensity.cpu()).numpy()))
+fig.show()

@@ -37,7 +37,7 @@ def diffusion_default():
         beta_schedule="linear",
         beta_start=0.0001,
         clip_sample=True,
-        num_train_timesteps=30,
+        num_train_timesteps=100,
         prediction_type="epsilon",
         trained_betas=None,
         variance_type="fixed_small",
@@ -109,7 +109,7 @@ class diffuser_GB_DH():
         # temp = (torch.abs(temp) - y) * torch.exp(1j * torch.angle(temp))
         return gradient.real
 
-    def reconstruction(self, holo, gamma, visual_check=None):
+    def reconstruction(self, holo, gamma, visual_check=None, iter = 5):
         ## initialization
         sample = self.backward_op(holo).abs().to(self.device)
         sample = norm_tensor(sample)
@@ -121,21 +121,25 @@ class diffuser_GB_DH():
         #     1, 1, model.config.sample_size, model.config.sample_size
         # ).to(self.device)
         sample = holo.to(self.device)
-        for i, t in enumerate(tqdm.tqdm(self.scheduler.timesteps)):
-            # 1. predict noise residual
+
+        for i in range(iter):
             sample = gray_to_rgb(sample)
-            with torch.no_grad():
-                residual = self.model(sample, t).sample
-                # 2. compute less noisy image and set x_t -> x_t-1
-                sample = scheduler.step(residual, t, sample).prev_sample
+            for t in tqdm.tqdm(self.scheduler.timesteps):
+                # 1. predict noise residual
+                with torch.no_grad():
+                    residual = self.model(sample, t).sample
+                    # 2. compute less noisy image and set x_t -> x_t-1
+                    sample = scheduler.step(residual, t, sample).prev_sample
 
-                # 3. gradient correction
-                sample = rgb_to_gray_tensor(sample)
-                sample = sample - gamma * self.cal_gradient(sample, holo)
-
+            # 3. gradient correction
+            sample = rgb_to_gray_tensor(sample)
+            # print('gradient correction',t)
+            display_sample(norm_tensor(sample), -(i + 1))
+            sample = sample - gamma * self.cal_gradient(sample, holo)
+            display_sample(norm_tensor(sample), i + 1)
             # 3. optionally look at image
-            if visual_check and (i + 1) % visual_check == 0:
-                display_sample(norm_tensor(sample), i + 1)
+            # if visual_check and (i + 1) % visual_check == 0:
+            #     display_sample(norm_tensor(sample), i + 1)
         return sample
 
 
@@ -202,8 +206,8 @@ holo = holo.expand(1, 1, nx, ny).to(device)
 # test = gt_intensity + 0.2*torch.randn(gt_intensity.shape)
 # test = test.expand(1,3,nx,ny).to(device)
 # display_sample(test,0)
-holo_noisy = holo + 0.1 * torch.randn(holo.shape).to(device)
-out = diffuser.reconstruction(holo_noisy, gamma=0.9, visual_check=10)
+holo_noisy = holo + 0 * torch.randn(holo.shape).to(device)
+out = diffuser.reconstruction(holo_noisy, gamma=0.9, visual_check=1, iter=5)
 psnr_holo = psnr(holo_noisy, holo)
 print(psnr_holo)
 fig, ax = plt.subplots(2, 2)

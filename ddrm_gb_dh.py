@@ -11,10 +11,7 @@ import numpy as np
 from PIL import Image
 import torch
 from torchvision.transforms import Resize
-import cv2
-import glob
-import scipy.io as sio
-import scipy.misc
+
 from utils.load_model import load_model
 from utils.functions import psnr, generate_otf_torch, rgb_to_gray, gray_to_rgb, zero_padding_torch, crop_img_torch
 from models.diffuser import diffusion_default
@@ -277,7 +274,7 @@ if __name__ == "__main__":
 
     diffusion_args = diffusion_default()
     diffusion_args.sigma_0 = 0.2
-    diffusion_args.timesteps = 50
+    diffusion_args.timesteps = 10
     diffusion_args.num_diffusion_timesteps = 1000
     diffusion_args.gamma = 0.2
 
