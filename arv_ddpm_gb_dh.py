@@ -148,7 +148,9 @@ np.random.seed(SEED)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 # img = Image.open('ExpSample/celeA/testsample.jpeg').resize([256, 256]).convert('L')
 
-img = Image.open('ExpSample/CAO/cell.jpeg').resize([256, 256]).convert('L')
+# img = Image.open('ExpSample/CAO/cell.jpeg').resize([256, 256]).convert('L')
+# img = Image.open('ExpSample/cell/36253_1.png').resize([256, 256]).convert('L')
+img = Image.open('ExpSample/cell/36254_8.png').resize([256, 256]).convert('L')
 # img = Image.open('cameraman.bmp').resize([256,256]).convert('L')
 # img = Image.open('test_image2.jpg').resize([256,256]).convert('L')
 # img = Image.open('USAF1951.jpg').resize([256,256]).convert('L')
